@@ -1,7 +1,4 @@
-#include "ThisThread.h"
-#include "lorawan_types.h"
 #include "mbed.h"
-#include "mbed_thread.h"
 
 /////////////////////////////
 //  Private include
@@ -10,6 +7,17 @@
 #include <SerialBridge.hpp>
 #include <MbedHardwareSerial.hpp>
 #include <Controller.hpp>
+
+//  MD
+#include <MD.hpp>
+//  Encoder
+#include <Encoder.hpp>
+//  PID
+#include <PID.hpp>
+//  Wheel
+#include <Wheel.hpp>
+//  Omuni4
+#include <Omuni4.hpp>
 
 /////////////////////////////
 //  Private definition
@@ -36,8 +44,6 @@ DigitalOut rx_led(RX_LED);
 DigitalOut rx_timeout_led(RX_TIMEOUT_LED);
 
 //  Timers
-//  PID clock timer
-Timer pid_timer;
 //  RX timeout timer
 Timer rx_timer;
 
@@ -48,10 +54,16 @@ SerialBridge serial(dev, 1024);
 Controller controller_msg[2];
 
 
+/////////////////////////////
+//  Private protype function
+
+//  initializer for md,encoder,pid,omuni, etc.
+static void initialize_module();
+
+
 int main()
 {
     //  start timers
-    pid_timer.start();
     rx_timer.start();
 
     //  Serial Bridge
@@ -98,3 +110,9 @@ int main()
     }
 }
 
+
+
+static void initialize_module()
+{
+
+}
