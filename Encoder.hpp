@@ -8,12 +8,12 @@
 class Encoder
 {
 public:
-    Encoder(PinName channel_a, PinName channel_b, int revolution, float time);
+    Encoder(PinName channel_a, PinName channel_b, int revolution, int time_ms);
     
     void reset();
     
-    double get_angle();
-    double get_angle_velocity();
+    double get_revolution();
+    double get_rps();
     
     int get_count();
     
@@ -35,7 +35,7 @@ private:
     void _BF();
     //  update parameters ticker
     Ticker _ticker;
-    float _time;
+    double _time_sec;
     void _sa();
 };
 

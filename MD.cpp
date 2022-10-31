@@ -5,6 +5,9 @@ MD::MD(PinName pwm, PinName dir, double max_duty, bool default_dir)
 {
     _max_duty = max_duty;
     _default_dir = default_dir;
+
+    //  frequency
+    _pwm.period_us(100);
 }
 
 void MD::drive(double power)

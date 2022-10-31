@@ -9,10 +9,10 @@ Wheel::Wheel(MD *md, Encoder *encoder, PID::ctrl_param_t *pid_gain, double radiu
 
 void Wheel::drive(double velocity, double dt)
 {
-    //  convert m/s to rad/s
+    //  convert m/s to RPS
     _vel.target = velocity / (2 * _radius * M_PI);
     //  feed back
-    _vel.feedback = _encoder->get_angle_velocity();
+    _vel.feedback = _encoder->get_rps();
 
     //  calculate
     _pid.step(dt);
