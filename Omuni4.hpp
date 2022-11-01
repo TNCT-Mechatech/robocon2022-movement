@@ -8,6 +8,7 @@
 #define WHEEL_2_RAD (double)5 / (double)4 * M_PI
 #define WHEEL_3_RAD (double)7 / (double)4 * M_PI
 #define WHEEL_4_RAD (double)1 / (double)4 * M_PI
+#define SQRT2 sqrt(2)
 
 class Omuni4
 {

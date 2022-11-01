@@ -38,22 +38,22 @@ void Omuni4::drive(double x, double y, double theta)
     double diff_sec = present_sec - _previous_time;
     //  w1
     _wheel[0]->drive(
-        x * sin(WHEEL_1_RAD) + x * sin(WHEEL_1_RAD) + theta * _radius,
+        -1 * x * SQRT2 + y * SQRT2 + theta * _radius,
         diff_sec
     );
     //  w2
     _wheel[1]->drive(
-        x * sin(WHEEL_2_RAD) + x * sin(WHEEL_2_RAD) + theta * _radius,
+        -1 * x * SQRT2 +  -1 * y * SQRT2 + theta * _radius,
         diff_sec
     );
     //  w3
     _wheel[2]->drive(
-        x * sin(WHEEL_3_RAD) + x * sin(WHEEL_3_RAD) + theta * _radius,
+        x * SQRT2 + -1 * y * SQRT2 + theta * _radius,
         diff_sec
     );
     //  w4
     _wheel[3]->drive(
-        x * sin(WHEEL_4_RAD) + x * sin(WHEEL_4_RAD) + theta * _radius,
+        x * SQRT2 + y * SQRT2 + theta * _radius,
         diff_sec
     );
 
