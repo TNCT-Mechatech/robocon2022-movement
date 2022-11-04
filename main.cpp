@@ -1,3 +1,4 @@
+#include "AnalogIn.h"
 #include "mbed.h"
 
 /////////////////////////////
@@ -6,7 +7,10 @@
 //  Serial Bridge
 #include <SerialBridge.hpp>
 #include <MbedHardwareSerial.hpp>
+#include <MessageStructure.hpp>
 #include <Controller.hpp>
+#include <ShooterMessage.hpp>
+#include <MovementFeeback.hpp>
 
 //  MD
 #include <MD.hpp>
@@ -18,6 +22,7 @@
 #include <Wheel.hpp>
 //  Omuni4
 #include <Omuni4.hpp>
+#include <cstdio>
 
 /////////////////////////////
 //  Private definition
@@ -29,31 +34,31 @@
 #define RX_TIMEOUT 1000
 
 //  LEDs
-#define RX_LED A0
-#define RX_TIMEOUT_LED A0
+#define RX_LED PB_15
+#define RX_TIMEOUT_LED PB_1
 
 //  MD
 #define MD_MAX_DUTY 1.0
-#define MD_1_PWM A0
-#define MD_1_DIR A0
-#define MD_2_PWM A0
-#define MD_2_DIR A0
-#define MD_3_PWM A0
-#define MD_3_DIR A0
-#define MD_4_PWM A0
-#define MD_4_DIR A0
+#define MD_1_PWM D5
+#define MD_1_DIR D6
+#define MD_2_PWM D4
+#define MD_2_DIR D7
+#define MD_3_PWM D3
+#define MD_3_DIR D8
+#define MD_4_PWM D2
+#define MD_4_DIR D9
 
 //  Encoder
-#define ENCODER_REVOLUTION 10000
+#define ENCODER_REVOLUTION 4800
 #define ENCODER_DIFF_MS 20
-#define ENCODER_1_A A0
-#define ENCODER_1_B A0
-#define ENCODER_2_A A0
-#define ENCODER_2_B A0
-#define ENCODER_3_A A0
-#define ENCODER_3_B A0
-#define ENCODER_4_A A0
-#define ENCODER_4_B A0
+#define ENCODER_1_A PA_14
+#define ENCODER_1_B PA_13
+#define ENCODER_2_A PC_10
+#define ENCODER_2_B PC_12
+#define ENCODER_3_A PB_9
+#define ENCODER_3_B PB_8
+#define ENCODER_4_A PC_3
+#define ENCODER_4_B PC_2
 
 //  Wheel 半径 m (127mm)
 #define WHEEL_RADIUS 0.0635
@@ -63,8 +68,12 @@
 
 
 //  Serial Bridge
+#define UART_SLAVE_TX PA_11
+#define UART_SLAVE_RX PA_12
+//  Message ID
 #define CONTROLLER_RX_ID 0
-#define CONTROLLER_TX_ID 1
+#define FEEDBACK_TX_ID 1
+#define CONTROLLER_TX_ID 10
 
 /////////////////////////////
 //  Private variable
@@ -89,11 +98,20 @@ vector3_t drive_variable = {0, 0, 0};
 Timer rx_timer;
 
 //  Serial Bridge
-SerialDev *dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
-SerialBridge serial(dev, 1024);
+// SerialDev *pc_dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
+// SerialBridge pc_serial(pc_dev, 1024);
+// SerialDev *slave_dev = new MbedHardwareSerial(new BufferedSerial(UART_SLAVE_TX, UART_SLAVE_RX, 115200));
+// SerialBridge slave_serial(slave_dev, 1024);
 //  Serial Bridge Message
-Controller controller_msg[2];
+Controller controller_msg;
+ShooterMessage shooter_msg;
+MovementFeedback movement_feedback_msg;
 
+
+//  DEBUG
+AnalogIn analog(A0);
+double power = 0;
+double prev_power = 0;
 
 /////////////////////////////
 //  Private protype function
@@ -104,14 +122,22 @@ static void initialize_module();
 
 int main()
 {
+    //  initialize module
+    initialize_module();
+
     //  start timers
     rx_timer.start();
 
     //  Serial Bridge
-    serial.add_frame(CONTROLLER_RX_ID, &controller_msg[0]);
-    serial.add_frame(CONTROLLER_TX_ID, &controller_msg[1]);
+    //  to pc
+    // pc_serial.add_frame(CONTROLLER_RX_ID, &controller_msg);
+    // pc_serial.add_frame(FEEDBACK_TX_ID, &movement_feedback_msg);
+    //  to slave
+    // slave_serial.add_frame(CONTROLLER_TX_ID, &shooter_msg);
 
     while (true) {
+
+        /* 
         //  rx timeout
         if(std::chrono::duration_cast<std::chrono::milliseconds>(rx_timer.elapsed_time()).count() > RX_TIMEOUT)
         {
@@ -125,23 +151,25 @@ int main()
         }
 
         //  Serial Bridge
-        if(serial.update() == 0)
+        if(pc_serial.update() == 0)
         {
             //  succeed communication
             
-            if(controller_msg[0].was_updated())
+            if(controller_msg.was_updated())
             {   
                 //  send another board
-                controller_msg[1].data.movement.x = controller_msg[0].data.movement.x;
-                controller_msg[1].data.movement.y = controller_msg[0].data.movement.y;
-                controller_msg[1].data.movement.z = controller_msg[0].data.movement.z;
+                shooter_msg.data.all_reload = controller_msg.data.all_reload;
+                shooter_msg.data.shooter.num = controller_msg.data.shooter.num;
+                shooter_msg.data.shooter.power = controller_msg.data.shooter.power;
+                shooter_msg.data.shooter.action = controller_msg.data.shooter.action;
+
 
                 //  set variable
-                drive_variable.x = controller_msg[0].data.movement.x;
-                drive_variable.y = controller_msg[0].data.movement.y;
-                drive_variable.z = controller_msg[0].data.movement.z;
+                drive_variable.x = controller_msg.data.movement.x;
+                drive_variable.y = controller_msg.data.movement.y;
+                drive_variable.z = controller_msg.data.movement.z;
 
-                serial.write(CONTROLLER_TX_ID);
+                pc_serial.write(CONTROLLER_TX_ID);
 
                 //  Toggle LED
                 rx_led = !rx_led;
@@ -151,12 +179,60 @@ int main()
             }
         }
 
+        */
+
+        
+        
+        //  feedback
+        wheel[0]->get_state(
+            &(movement_feedback_msg.data.target.v1),
+            &(movement_feedback_msg.data.output.v1)
+        );
+        wheel[1]->get_state(
+            &(movement_feedback_msg.data.target.v2),
+            &(movement_feedback_msg.data.output.v2)
+        );
+        wheel[2]->get_state(
+            &(movement_feedback_msg.data.target.v3),
+            &(movement_feedback_msg.data.output.v3)
+        );
+        wheel[3]->get_state(
+            &(movement_feedback_msg.data.target.v4),
+            &(movement_feedback_msg.data.output.v4)
+        );
+
+        /*
+        //  send
+        pc_serial.write(FEEDBACK_TX_ID);
+        
         //  Drive omuni4
         omuni4->drive(
             drive_variable.x, 
             drive_variable.y,
             drive_variable.z
         );
+        */
+
+        
+        power = ((analog.read() - 0.5) * 2) * 0.6 + prev_power * 0.4;
+        prev_power = power;
+        //  Drive omuni4
+        omuni4->drive(
+            0, 
+            0,
+            power * M_PI * 0.5
+        );
+
+        printf(
+            "t:%.3f a:%.3f b:%.3f c:%.3f d:%.3f\n\r",
+            movement_feedback_msg.data.target.v1,
+            movement_feedback_msg.data.output.v1,
+            movement_feedback_msg.data.output.v2,
+            movement_feedback_msg.data.output.v3,
+            movement_feedback_msg.data.output.v4
+        );
+
+        // printf("%d\n\r", encoder[2]->get_count());
 
         // ThisThread::sleep_for(LOOP_RATE);
         thread_sleep_for(LOOP_RATE);
@@ -171,77 +247,77 @@ static void initialize_module()
     md[0] = new MD(
         MD_1_PWM,
         MD_1_DIR,
-        MD_MAX_DUTY
+        MD_MAX_DUTY,
+        false
     );
     md[1] = new MD(
         MD_2_PWM,
         MD_2_DIR,
-        MD_MAX_DUTY
+        MD_MAX_DUTY,
+        true
     );
     md[2] = new MD(
         MD_3_PWM,
         MD_3_DIR,
-        MD_MAX_DUTY
+        MD_MAX_DUTY,
+        true
     );
     md[3] = new MD(
         MD_4_PWM,
         MD_4_DIR,
-        MD_MAX_DUTY
+        MD_MAX_DUTY,
+        true
     );
 
     //  init Encoder
     encoder[0] = new Encoder(
         ENCODER_1_A,
         ENCODER_1_B,
-        ENCODER_REVOLUTION,
-        ENCODER_DIFF_MS
+        ENCODER_REVOLUTION
     );
     encoder[1] = new Encoder(
         ENCODER_2_A,
         ENCODER_2_B,
-        ENCODER_REVOLUTION,
-        ENCODER_DIFF_MS
+        ENCODER_REVOLUTION
     );
     encoder[2] = new Encoder(
         ENCODER_3_A,
         ENCODER_3_B,
-        ENCODER_REVOLUTION,
-        ENCODER_DIFF_MS
+        ENCODER_REVOLUTION
     );
     encoder[3] = new Encoder(
         ENCODER_4_A,
         ENCODER_4_B,
-        ENCODER_REVOLUTION,
-        ENCODER_DIFF_MS
+        ENCODER_REVOLUTION
     );
 
     //  pid gain
     pid_param[0] = PID::ctrl_param_t {
-        0.1,
         0.0,
         0.0,
         0.0,
+        1 / 4.0,
         false
     };
     pid_param[1] = PID::ctrl_param_t {
-        0.1,
         0.0,
         0.0,
         0.0,
+        1 / 4.0,
         false
     };
     pid_param[2] = PID::ctrl_param_t {
-        0.1,
         0.0,
         0.0,
         0.0,
+        1 / 4.0,
         false
     };
     pid_param[3] = PID::ctrl_param_t {
-        0.1,
         0.0,
         0.0,
         0.0,
+        1 / 4.0,
         false
     };
 

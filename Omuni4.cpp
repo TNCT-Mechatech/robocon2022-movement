@@ -1,5 +1,6 @@
 #include <Omuni4.hpp>
 #include <chrono>
+#include <cstdio>
 
 /**
  *  @brief Omuni wheel movement
@@ -21,6 +22,7 @@ Omuni4::Omuni4(Wheel *wheel[4], double radius)
     }
 
     //  start timer
+    _previous_time = 0;
     timer.start();
 }
 
@@ -36,6 +38,7 @@ void Omuni4::drive(double x, double y, double theta)
 {
     double present_sec = chrono::duration<float>{timer.elapsed_time()}.count();
     double diff_sec = present_sec - _previous_time;
+
     //  w1
     _wheel[0]->drive(
         -1 * x * SQRT2 + y * SQRT2 + theta * _radius,

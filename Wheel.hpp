@@ -17,6 +17,8 @@ public:
 
     //  stop wheel
     void stop();
+
+    void get_state(float *target, float *feedback);
 private:
     //  module
     MD *_md;

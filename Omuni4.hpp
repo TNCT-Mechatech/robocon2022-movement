@@ -4,11 +4,7 @@
 #include <Wheel.hpp>
 #include <math.h>
 
-#define WHEEL_1_RAD (double)3 / (double)4 * M_PI
-#define WHEEL_2_RAD (double)5 / (double)4 * M_PI
-#define WHEEL_3_RAD (double)7 / (double)4 * M_PI
-#define WHEEL_4_RAD (double)1 / (double)4 * M_PI
-#define SQRT2 sqrt(2)
+#define SQRT2 1.41421356237
 
 class Omuni4
 {
