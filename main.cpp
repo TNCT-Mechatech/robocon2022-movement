@@ -34,8 +34,12 @@
 #define RX_TIMEOUT 1000
 
 //  LEDs
-#define RX_LED PB_15
+#define RX_LED PB_2
 #define RX_TIMEOUT_LED PB_1
+#define LED_3 PB_15
+#define LED_4 PB_14
+#define LED_5 PB_13
+
 
 //  MD
 #define MD_MAX_DUTY 1.0
@@ -70,10 +74,21 @@
 //  Serial Bridge
 #define UART_SLAVE_TX PA_11
 #define UART_SLAVE_RX PA_12
+
+//  IM920
+#define IM920_TX PA_15
+#define IM920_RX PB_7
+
+
 //  Message ID
 #define CONTROLLER_RX_ID 0
 #define FEEDBACK_TX_ID 1
 #define CONTROLLER_TX_ID 10
+
+//  moving speed limitter
+#define MAX_X_SPEED 1.5
+#define MAX_Y_SPEED 1.5
+#define MAX_Z_SPEED 2.0
 
 /////////////////////////////
 //  Private variable
@@ -98,20 +113,22 @@ vector3_t drive_variable = {0, 0, 0};
 Timer rx_timer;
 
 //  Serial Bridge
-// SerialDev *pc_dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
-// SerialBridge pc_serial(pc_dev, 1024);
-// SerialDev *slave_dev = new MbedHardwareSerial(new BufferedSerial(UART_SLAVE_TX, UART_SLAVE_RX, 115200));
-// SerialBridge slave_serial(slave_dev, 1024);
+SerialDev *pc_dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
+SerialBridge pc_serial(pc_dev, 1024);
+SerialDev *slave_dev = new MbedHardwareSerial(new BufferedSerial(UART_SLAVE_TX, UART_SLAVE_RX, 115200));
+SerialBridge slave_serial(slave_dev);
 //  Serial Bridge Message
 Controller controller_msg;
 ShooterMessage shooter_msg;
 MovementFeedback movement_feedback_msg;
 
 
+/*
 //  DEBUG
 AnalogIn analog(A0);
 double power = 0;
 double prev_power = 0;
+*/
 
 /////////////////////////////
 //  Private protype function
@@ -130,16 +147,15 @@ int main()
 
     //  Serial Bridge
     //  to pc
-    // pc_serial.add_frame(CONTROLLER_RX_ID, &controller_msg);
-    // pc_serial.add_frame(FEEDBACK_TX_ID, &movement_feedback_msg);
+    pc_serial.add_frame(CONTROLLER_RX_ID, &controller_msg);
+    pc_serial.add_frame(FEEDBACK_TX_ID, &movement_feedback_msg);
     //  to slave
-    // slave_serial.add_frame(CONTROLLER_TX_ID, &shooter_msg);
+    slave_serial.add_frame(CONTROLLER_TX_ID, &shooter_msg);
 
     while (true) {
 
-        /* 
         //  rx timeout
-        if(std::chrono::duration_cast<std::chrono::milliseconds>(rx_timer.elapsed_time()).count() > RX_TIMEOUT)
+        if(rx_timer.read_ms() > RX_TIMEOUT)
         {
             // Toggle RX_TIMEOUT LED
             rx_timeout_led = true;
@@ -169,7 +185,7 @@ int main()
                 drive_variable.y = controller_msg.data.movement.y;
                 drive_variable.z = controller_msg.data.movement.z;
 
-                pc_serial.write(CONTROLLER_TX_ID);
+                slave_serial.write(CONTROLLER_TX_ID);
 
                 //  Toggle LED
                 rx_led = !rx_led;
@@ -179,9 +195,6 @@ int main()
             }
         }
 
-        */
-
-        
         
         //  feedback
         wheel[0]->get_state(
@@ -201,19 +214,32 @@ int main()
             &(movement_feedback_msg.data.output.v4)
         );
 
-        /*
+
         //  send
-        pc_serial.write(FEEDBACK_TX_ID);
+        // pc_serial.write(FEEDBACK_TX_ID);
         
+        //  add speed limiter
+        if(drive_variable.x > MAX_X_SPEED)
+        {
+            drive_variable.x = MAX_X_SPEED;
+        }
+        if(drive_variable.y > MAX_Y_SPEED)
+        {
+            drive_variable.y = MAX_Y_SPEED;
+        }
+        if(drive_variable.z > MAX_Z_SPEED)
+        {
+            drive_variable.z = MAX_Z_SPEED;
+        }
+
         //  Drive omuni4
         omuni4->drive(
             drive_variable.x, 
             drive_variable.y,
             drive_variable.z
         );
-        */
-
         
+        /*  DEBUG
         power = ((analog.read() - 0.5) * 2) * 0.6 + prev_power * 0.4;
         prev_power = power;
         //  Drive omuni4
@@ -233,6 +259,7 @@ int main()
         );
 
         // printf("%d\n\r", encoder[2]->get_count());
+        */
 
         // ThisThread::sleep_for(LOOP_RATE);
         thread_sleep_for(LOOP_RATE);
