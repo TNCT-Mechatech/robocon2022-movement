@@ -2,10 +2,13 @@
 #define _CONTROLLER_HPP_
 
 #include <Message.hpp>
+#include <cstdint>
 #include "MessageStructure.hpp"
 
 typedef struct ControllerType
 {
+    //  movement mode
+    int8_t movement_mode;
     //  include vector-x,y,theta
     vector3_t movement;
     //  shooter variable
