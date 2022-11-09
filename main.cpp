@@ -1,4 +1,4 @@
-#include "AnalogIn.h"
+#include "DigitalOut.h"
 #include "mbed.h"
 
 /////////////////////////////
@@ -11,6 +11,8 @@
 #include <Controller.hpp>
 #include <ShooterMessage.hpp>
 #include <MovementFeeback.hpp>
+#include <DebugMessage.h>
+#include <Gesture.h>
 
 //  MD
 #include <MD.hpp>
@@ -22,6 +24,7 @@
 #include <Wheel.hpp>
 //  Omuni4
 #include <Omuni4.hpp>
+#include <cstdint>
 #include <cstdio>
 
 /////////////////////////////
@@ -34,9 +37,9 @@
 #define RX_TIMEOUT 1000
 
 //  LEDs
-#define RX_LED PB_2
+#define CONTROLLER_RX_LED PB_2
 #define RX_TIMEOUT_LED PB_1
-#define LED_3 PB_15
+#define GESTURE_RX_LED PB_15
 #define LED_4 PB_14
 #define LED_5 PB_13
 
@@ -70,6 +73,13 @@
 //  Omuni4 中心からの距離 m (494.19mm)
 #define OMUNI_4_RADIUS 0.49419
 
+//  speed (m/s, rad/s)
+#define MOVEMENT_FAST_XY 1.4
+#define MOVEMENT_FAST_THETA 1.0
+#define MOVEMENT_NORMAL_XY 1.0
+#define MOVEMENT_NORMAL_THETA 0.6
+#define MOVEMENT_SLOW_XY 0.5
+#define MOVEMENT_SLOW_THETA 0.3
 
 //  Serial Bridge
 #define UART_SLAVE_TX PA_11
@@ -82,7 +92,9 @@
 
 //  Message ID
 #define CONTROLLER_RX_ID 0
-#define FEEDBACK_TX_ID 1
+#define GESTURE_RX_ID 1
+#define FEEDBACK_TX_ID 5
+#define DEBUG_TX_ID 6
 #define CONTROLLER_TX_ID 10
 
 //  moving speed limitter
@@ -94,8 +106,9 @@
 //  Private variable
 
 //  LEDs
-DigitalOut rx_led(RX_LED);
+DigitalOut rx_led(CONTROLLER_RX_LED);
 DigitalOut rx_timeout_led(RX_TIMEOUT_LED);
+DigitalOut rx_gesture_led(GESTURE_RX_LED);
 
 //  Modules
 MD *md[4];
@@ -105,7 +118,9 @@ Wheel *wheel[4];
 Omuni4 *omuni4;
 
 //  Drive variable
+vector3_t received_movement_variable = {0, 0, 0};
 vector3_t drive_variable = {0, 0, 0};
+int8_t movement_mode = 0;
 
 
 //  Timers
@@ -121,6 +136,8 @@ SerialBridge slave_serial(slave_dev);
 Controller controller_msg;
 ShooterMessage shooter_msg;
 MovementFeedback movement_feedback_msg;
+DebugMessage debug_msg;
+Gesture gesture_msg;
 
 
 /*
@@ -148,7 +165,9 @@ int main()
     //  Serial Bridge
     //  to pc
     pc_serial.add_frame(CONTROLLER_RX_ID, &controller_msg);
+    pc_serial.add_frame(GESTURE_RX_ID, &gesture_msg);
     pc_serial.add_frame(FEEDBACK_TX_ID, &movement_feedback_msg);
+    pc_serial.add_frame(DEBUG_TX_ID, &debug_msg);
     //  to slave
     slave_serial.add_frame(CONTROLLER_TX_ID, &shooter_msg);
 
@@ -161,16 +180,16 @@ int main()
             rx_timeout_led = true;
 
             //  set zero all control value
-            drive_variable.x = 0;
-            drive_variable.y = 0;
-            drive_variable.z = 0;
+            received_movement_variable.x = 0;
+            received_movement_variable.y = 0;
+            received_movement_variable.z = 0;
         }
 
         //  Serial Bridge
         if(pc_serial.update() == 0)
         {
             //  succeed communication
-            
+            //  Controller
             if(controller_msg.was_updated())
             {   
                 //  send another board
@@ -181,9 +200,10 @@ int main()
 
 
                 //  set variable
-                drive_variable.x = controller_msg.data.movement.x;
-                drive_variable.y = controller_msg.data.movement.y;
-                drive_variable.z = controller_msg.data.movement.z;
+                received_movement_variable.x = controller_msg.data.movement.x;
+                received_movement_variable.y = controller_msg.data.movement.y;
+                received_movement_variable.z = controller_msg.data.movement.z;
+                movement_mode = controller_msg.data.movement_mode;
 
                 slave_serial.write(CONTROLLER_TX_ID);
 
@@ -192,6 +212,42 @@ int main()
                 rx_timeout_led = false;
                 //  reset timer
                 rx_timer.reset();
+
+                //  DEBUG
+                // memset(debug_msg.data.str, 0, 64);
+                // sprintf(
+                //     debug_msg.data.str,
+                //     "%.2lf:%.2lf:%.2lf:%d %d:%d:%.2lf:%d",
+                //     controller_msg.data.movement.x,
+                //     controller_msg.data.movement.y,
+                //     controller_msg.data.movement.z,
+                //     controller_msg.data.movement_mode,
+                //     controller_msg.data.all_reload,
+                //     controller_msg.data.shooter.num,
+                //     controller_msg.data.shooter.power,
+                //     controller_msg.data.shooter.action
+                // );
+                // pc_serial.write(DEBUG_TX_ID);
+            }
+
+            //  Gesture
+            if(gesture_msg.was_updated())
+            {
+                shooter_msg.data.shooter.action = gesture_msg.data.type == 1 ? true : false;
+
+                //  send to slave
+                slave_serial.write(CONTROLLER_TX_ID);
+
+                rx_gesture_led = !rx_gesture_led;
+
+                //  DEBUG
+                // memset(debug_msg.data.str, 0, 64);
+                // sprintf(
+                //     debug_msg.data.str,
+                //     "G:%d",
+                //     gesture_msg.data.type
+                // );
+                // pc_serial.write(DEBUG_TX_ID);
             }
         }
 
@@ -217,8 +273,26 @@ int main()
 
         //  send
         // pc_serial.write(FEEDBACK_TX_ID);
-        
-        //  add speed limiter
+
+        //  Movement mode
+        if(movement_mode == 0)
+        {
+            drive_variable.x = received_movement_variable.x * MOVEMENT_FAST_XY;
+            drive_variable.y = received_movement_variable.y * MOVEMENT_FAST_XY;
+            drive_variable.z = received_movement_variable.z * MOVEMENT_FAST_THETA;
+        }
+        else if (movement_mode == 1) {
+            drive_variable.x = received_movement_variable.x * MOVEMENT_NORMAL_XY;
+            drive_variable.y = received_movement_variable.y * MOVEMENT_NORMAL_XY;
+            drive_variable.z = received_movement_variable.z * MOVEMENT_NORMAL_THETA;
+        }
+        else if (movement_mode == 2) {
+            drive_variable.x = received_movement_variable.x * MOVEMENT_SLOW_XY;
+            drive_variable.y = received_movement_variable.y * MOVEMENT_SLOW_XY;
+            drive_variable.z = received_movement_variable.z * MOVEMENT_SLOW_THETA;
+        }
+
+        //  speed limiter
         if(drive_variable.x > MAX_X_SPEED)
         {
             drive_variable.x = MAX_X_SPEED;
