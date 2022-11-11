@@ -1,8 +1,10 @@
-#include "DigitalOut.h"
 #include "mbed.h"
 
 /////////////////////////////
 //  Private include
+
+//  Mbed
+#include "DigitalOut.h"
 
 //  Serial Bridge
 #include <SerialBridge.hpp>
@@ -27,6 +29,9 @@
 #include <cstdint>
 #include <cstdio>
 
+//  std
+#include <math.h>
+
 /////////////////////////////
 //  Private definition
 
@@ -46,14 +51,14 @@
 
 //  MD
 #define MD_MAX_DUTY 1.0
-#define MD_1_PWM D5
-#define MD_1_DIR D6
-#define MD_2_PWM D4
-#define MD_2_DIR D7
-#define MD_3_PWM D3
-#define MD_3_DIR D8
-#define MD_4_PWM D2
-#define MD_4_DIR D9
+#define MD_1_DIR D5
+#define MD_1_PWM D6
+#define MD_2_DIR D4
+#define MD_2_PWM D7
+#define MD_3_DIR D3
+#define MD_3_PWM D8
+#define MD_4_DIR D2
+#define MD_4_PWM D9
 
 //  Encoder
 #define ENCODER_REVOLUTION 4800
@@ -80,6 +85,10 @@
 #define MOVEMENT_NORMAL_THETA 0.6
 #define MOVEMENT_SLOW_XY 0.5
 #define MOVEMENT_SLOW_THETA 0.3
+
+//  smooth acceralation (m/sec/loop)
+#define MOVEMENT_ACCERALATION 0.15
+#define MOVEMENT_FIT_RANGE 0.2
 
 //  Serial Bridge
 #define UART_SLAVE_TX PA_11
@@ -120,6 +129,7 @@ Omuni4 *omuni4;
 //  Drive variable
 vector3_t received_movement_variable = {0, 0, 0};
 vector3_t drive_variable = {0, 0, 0};
+vector3_t present_drive_variable = {0, 0, 0};
 int8_t movement_mode = 0;
 
 
@@ -128,7 +138,9 @@ int8_t movement_mode = 0;
 Timer rx_timer;
 
 //  Serial Bridge
-SerialDev *pc_dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
+BufferedSerial pc_bs(USBTX, USBRX, 115200);
+SerialDev *pc_dev = new MbedHardwareSerial(&pc_bs);
+// SerialDev *pc_dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
 SerialBridge pc_serial(pc_dev, 1024);
 SerialDev *slave_dev = new MbedHardwareSerial(new BufferedSerial(UART_SLAVE_TX, UART_SLAVE_RX, 115200));
 SerialBridge slave_serial(slave_dev);
@@ -138,14 +150,6 @@ ShooterMessage shooter_msg;
 MovementFeedback movement_feedback_msg;
 DebugMessage debug_msg;
 Gesture gesture_msg;
-
-
-/*
-//  DEBUG
-AnalogIn analog(A0);
-double power = 0;
-double prev_power = 0;
-*/
 
 /////////////////////////////
 //  Private protype function
@@ -177,7 +181,7 @@ int main()
         if(rx_timer.read_ms() > RX_TIMEOUT)
         {
             // Toggle RX_TIMEOUT LED
-            rx_timeout_led = true;
+            rx_timeout_led = !rx_timeout_led;
 
             //  set zero all control value
             received_movement_variable.x = 0;
@@ -212,22 +216,6 @@ int main()
                 rx_timeout_led = false;
                 //  reset timer
                 rx_timer.reset();
-
-                //  DEBUG
-                // memset(debug_msg.data.str, 0, 64);
-                // sprintf(
-                //     debug_msg.data.str,
-                //     "%.2lf:%.2lf:%.2lf:%d %d:%d:%.2lf:%d",
-                //     controller_msg.data.movement.x,
-                //     controller_msg.data.movement.y,
-                //     controller_msg.data.movement.z,
-                //     controller_msg.data.movement_mode,
-                //     controller_msg.data.all_reload,
-                //     controller_msg.data.shooter.num,
-                //     controller_msg.data.shooter.power,
-                //     controller_msg.data.shooter.action
-                // );
-                // pc_serial.write(DEBUG_TX_ID);
             }
 
             //  Gesture
@@ -239,17 +227,9 @@ int main()
                 slave_serial.write(CONTROLLER_TX_ID);
 
                 rx_gesture_led = !rx_gesture_led;
-
-                //  DEBUG
-                // memset(debug_msg.data.str, 0, 64);
-                // sprintf(
-                //     debug_msg.data.str,
-                //     "G:%d",
-                //     gesture_msg.data.type
-                // );
-                // pc_serial.write(DEBUG_TX_ID);
             }
         }
+        
 
         
         //  feedback
@@ -272,7 +252,7 @@ int main()
 
 
         //  send
-        // pc_serial.write(FEEDBACK_TX_ID);
+        pc_serial.write(FEEDBACK_TX_ID);
 
         //  Movement mode
         if(movement_mode == 0)
@@ -292,6 +272,7 @@ int main()
             drive_variable.z = received_movement_variable.z * MOVEMENT_SLOW_THETA;
         }
 
+        /*
         //  speed limiter
         if(drive_variable.x > MAX_X_SPEED)
         {
@@ -305,37 +286,74 @@ int main()
         {
             drive_variable.z = MAX_Z_SPEED;
         }
-
-        //  Drive omuni4
-        omuni4->drive(
-            drive_variable.x, 
-            drive_variable.y,
-            drive_variable.z
-        );
-        
-        /*  DEBUG
-        power = ((analog.read() - 0.5) * 2) * 0.6 + prev_power * 0.4;
-        prev_power = power;
-        //  Drive omuni4
-        omuni4->drive(
-            0, 
-            0,
-            power * M_PI * 0.5
-        );
-
-        printf(
-            "t:%.3f a:%.3f b:%.3f c:%.3f d:%.3f\n\r",
-            movement_feedback_msg.data.target.v1,
-            movement_feedback_msg.data.output.v1,
-            movement_feedback_msg.data.output.v2,
-            movement_feedback_msg.data.output.v3,
-            movement_feedback_msg.data.output.v4
-        );
-
-        // printf("%d\n\r", encoder[2]->get_count());
         */
 
-        // ThisThread::sleep_for(LOOP_RATE);
+        //  increment
+        //  x
+        if((drive_variable.x - present_drive_variable.x) > 0)
+        {
+            present_drive_variable.x += MOVEMENT_ACCERALATION;
+        }
+        else if ((drive_variable.x - present_drive_variable.x) < 0) {
+            present_drive_variable.x -= MOVEMENT_ACCERALATION;
+        }
+        //  y
+        if((drive_variable.y - present_drive_variable.y) > 0)
+        {
+            present_drive_variable.y += MOVEMENT_ACCERALATION;
+        }
+        else if ((drive_variable.y - present_drive_variable.y) < 0) {
+            present_drive_variable.y -= MOVEMENT_ACCERALATION;
+        }
+        //  theta
+        if((drive_variable.z - present_drive_variable.z) > 0)
+        {
+            present_drive_variable.z += MOVEMENT_ACCERALATION;
+        }
+        else if ((drive_variable.z - present_drive_variable.z) < 0) {
+            present_drive_variable.z -= MOVEMENT_ACCERALATION;
+        }
+
+        //  fit
+        //  x
+        if(abs(drive_variable.x - present_drive_variable.x) < MOVEMENT_FIT_RANGE)
+        {
+            present_drive_variable.x = drive_variable.x;
+        }
+        //  y
+        if(abs(drive_variable.y - present_drive_variable.y) < MOVEMENT_FIT_RANGE)
+        {
+            present_drive_variable.y = drive_variable.y;
+        }
+        //  z
+        if(abs(drive_variable.z - present_drive_variable.z) < MOVEMENT_FIT_RANGE)
+        {
+            present_drive_variable.z = drive_variable.z;
+        }
+
+        //  Drive omuni4
+        omuni4->drive(
+            present_drive_variable.x, 
+            present_drive_variable.y,
+            present_drive_variable.z
+        );
+        // omuni4->drive(
+        //     drive_variable.x, 
+        //     drive_variable.y,
+        //     drive_variable.z
+        // );
+
+        // memset(debug_msg.data.str, 0, 64);
+        // sprintf(
+        //     debug_msg.data.str,
+        //     "x:%.2f y:%.2f z:%.2f",
+        //     drive_variable.x,
+        //     drive_variable.y,
+        //     drive_variable.z
+        // );
+        // pc_serial.write(DEBUG_TX_ID);
+        
+                
         thread_sleep_for(LOOP_RATE);
     }
 }
