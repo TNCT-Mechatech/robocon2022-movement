@@ -41,22 +41,22 @@ void Omuni4::drive(double x, double y, double theta)
 
     //  w1
     _wheel[0]->drive(
-        -1 / SQRT2 * x + 1 / SQRT2 * y + theta * _radius,
+        (-1 / SQRT2 * x) + (1 / SQRT2 * y) + (theta * _radius),
         diff_sec
     );
     //  w2
     _wheel[1]->drive(
-        -1 / SQRT2 * x +  -1 / SQRT2 * y + theta * _radius,
+        (-1 / SQRT2 * x ) + (-1 / SQRT2 * y) + (theta * _radius),
         diff_sec
     );
     //  w3
     _wheel[2]->drive(
-        1 / SQRT2 * x + -1 / SQRT2 * y + theta * _radius,
+        (1 / SQRT2 * x) + (-1 / SQRT2 * y) + (theta * _radius),
         diff_sec
     );
     //  w4
     _wheel[3]->drive(
-        1 / SQRT2 * x + 1 / SQRT2 * y + theta * _radius,
+        (1 / SQRT2 * x) + (1 / SQRT2 * y) + (theta * _radius),
         diff_sec
     );
 
