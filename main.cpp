@@ -41,13 +41,14 @@
 
 //  RX Timeout
 #define RX_TIMEOUT 1000
+#define SUB_CONTROLLER_TIMEOUT 1000
 
 //  LEDs
 #define CONTROLLER_RX_LED PB_2
 // #define RX_TIMEOUT_LED PB_1
 #define RX_TIMEOUT_LED PB_15
 #define GESTURE_RX_LED PB_14
-#define LED_5 PB_13
+#define SUB_CONTROLLER_LED PB_13
 
 //  Emergency STOP
 #define EMERGENCY_STOP PC_8
@@ -85,15 +86,15 @@
 #define MAX_XY_SPEED 1.8
 #define MAX_THETA_SPEED 1.57079632679
 #define MOVEMENT_FAST_XY 1.0
-#define MOVEMENT_FAST_THETA 1.0
-#define MOVEMENT_NORMAL_XY 0.5
-#define MOVEMENT_NORMAL_THETA 0.5
-#define MOVEMENT_SLOW_XY 0.2
-#define MOVEMENT_SLOW_THETA 0.2
+#define MOVEMENT_FAST_THETA 0.7
+#define MOVEMENT_NORMAL_XY 0.3
+#define MOVEMENT_NORMAL_THETA 0.4
+#define MOVEMENT_SLOW_XY 0.1
+#define MOVEMENT_SLOW_THETA 0.1
 
 //  smooth acceralation (m/sec/loop)
-#define MOVEMENT_ACCERALATION 0.15
-#define MOVEMENT_FIT_RANGE 0.2
+#define MOVEMENT_ACCERALATION 0.05
+#define MOVEMENT_FIT_RANGE 0.10
 
 //  Serial Bridge
 #define UART_SLAVE_TX PA_11
@@ -105,12 +106,17 @@
 
 
 //  Message ID
+//  from pc
 #define CONTROLLER_RX_ID 0
 #define GESTURE_RX_ID 1
 #define PID_GAIN_ID 2
 #define FEEDBACK_TX_ID 5
 #define DEBUG_TX_ID 6
+#define UPSTREAM_CONTROLLER_ID 7
+//  slave
 #define CONTROLLER_TX_ID 10
+//  from sub controlle
+#define SUB_CONTROLLER_ID 0
 
 /////////////////////////////
 //  Private variable
@@ -119,7 +125,7 @@
 DigitalOut rx_led(CONTROLLER_RX_LED);
 DigitalOut rx_timeout_led(RX_TIMEOUT_LED);
 DigitalOut rx_gesture_led(GESTURE_RX_LED);
-DigitalOut test_led(LED_5);
+DigitalOut rx_sub_ctl_led(SUB_CONTROLLER_LED);
 
 //  Emergency stop
 DigitalOut emergency_stop(EMERGENCY_STOP);
@@ -137,18 +143,25 @@ vector3_t drive_variable = {0, 0, 0};
 vector3_t present_drive_variable = {0, 0, 0};
 int8_t movement_mode = 0;
 
-
 //  Timers
 //  RX timeout timer
 Timer rx_timer;
+//  Timer for timestamp
+Timer rx_timestamp;
+int last_sub_ctl_response = 0;
+
 
 //  Serial Bridge
 SerialDev *pc_dev = new MbedHardwareSerial(new BufferedSerial(USBTX, USBRX, 115200));
 SerialBridge pc_serial(pc_dev, 1024);
 SerialDev *slave_dev = new MbedHardwareSerial(new BufferedSerial(UART_SLAVE_TX, UART_SLAVE_RX, 115200));
 SerialBridge slave_serial(slave_dev);
+SerialDev *sub_ctl_dev = new MbedHardwareSerial(new BufferedSerial(IM920_TX, IM920_RX, 115200));
+SerialBridge sub_ctl_serial(sub_ctl_dev);
 //  Serial Bridge Message
 Controller controller_msg;
+Controller upstream_controller_msg;
+Controller sub_controller_msg;
 ShooterMessage shooter_msg;
 MovementFeedback movement_feedback_msg;
 DebugMessage debug_msg;
@@ -177,8 +190,11 @@ int main()
     pc_serial.add_frame(FEEDBACK_TX_ID, &movement_feedback_msg);
     pc_serial.add_frame(DEBUG_TX_ID, &debug_msg);
     pc_serial.add_frame(PID_GAIN_ID, &pid_gain_msg);
+    pc_serial.add_frame(UPSTREAM_CONTROLLER_ID, &upstream_controller_msg);
     //  to slave
     slave_serial.add_frame(CONTROLLER_TX_ID, &shooter_msg);
+    //  from sub controller
+    sub_ctl_serial.add_frame(SUB_CONTROLLER_ID, &sub_controller_msg);
 
     while (true) {        
         //  rx timeout
@@ -202,30 +218,34 @@ int main()
             //  succeed communication
             //  Controller
             if(controller_msg.was_updated())
-            {   
-                //  emergency stop
-                emergency_stop = controller_msg.data.emergency_switch;
+            {
+                if(rx_timestamp.read_ms() - last_sub_ctl_response > SUB_CONTROLLER_TIMEOUT)
+                {
+                    //  emergency stop
+                    emergency_stop = controller_msg.data.emergency_switch;
 
-                //  send another board
-                shooter_msg.data.all_reload = controller_msg.data.all_reload;
-                shooter_msg.data.shooter.num = controller_msg.data.shooter.num;
-                shooter_msg.data.shooter.power = controller_msg.data.shooter.power;
-                shooter_msg.data.shooter.action = controller_msg.data.shooter.action;
+                    //  send another board
+                    shooter_msg.data.all_reload = controller_msg.data.all_reload;
+                    shooter_msg.data.shooter.num = controller_msg.data.shooter.num;
+                    shooter_msg.data.shooter.power = controller_msg.data.shooter.power;
+                    shooter_msg.data.shooter.action = controller_msg.data.shooter.action;
 
 
-                //  set variable
-                received_movement_variable.x = controller_msg.data.movement.x;
-                received_movement_variable.y = controller_msg.data.movement.y;
-                received_movement_variable.z = controller_msg.data.movement.z;
-                movement_mode = controller_msg.data.movement_mode;
+                    //  set variable
+                    received_movement_variable.x = controller_msg.data.movement.x;
+                    received_movement_variable.y = controller_msg.data.movement.y;
+                    received_movement_variable.z = controller_msg.data.movement.z;
+                    movement_mode = controller_msg.data.movement_mode;
 
-                slave_serial.write(CONTROLLER_TX_ID);
+                    slave_serial.write(CONTROLLER_TX_ID);
+
+                    rx_timeout_led = false;
+                    //  reset timer
+                    rx_timer.reset();
+                }
 
                 //  Toggle LED
                 rx_led = !rx_led;
-                rx_timeout_led = false;
-                //  reset timer
-                rx_timer.reset();
             }
 
             //  Gesture
@@ -251,12 +271,41 @@ int main()
                         pid_gain_msg.data.gains[i].fg,
                     };
                 }
-
-                test_led = !test_led;
             }
         }
         
+        if(sub_ctl_serial.update() == 0)
+        {
+            if(sub_controller_msg.was_updated())
+            {
+                //  emergency stop
+                emergency_stop = sub_controller_msg.data.emergency_switch;
 
+                //  send another board
+                shooter_msg.data.all_reload = sub_controller_msg.data.all_reload;
+                shooter_msg.data.shooter.num = sub_controller_msg.data.shooter.num;
+                shooter_msg.data.shooter.power = sub_controller_msg.data.shooter.power;
+                shooter_msg.data.shooter.action = sub_controller_msg.data.shooter.action;
+
+                //  set variable
+                received_movement_variable.x = sub_controller_msg.data.movement.x;
+                received_movement_variable.y = sub_controller_msg.data.movement.y;
+                received_movement_variable.z = sub_controller_msg.data.movement.z;
+                movement_mode = sub_controller_msg.data.movement_mode;
+
+                //  send slave
+                slave_serial.write(CONTROLLER_TX_ID);
+
+                //  Toggle LED
+                rx_sub_ctl_led = !rx_sub_ctl_led;
+                rx_timeout_led = false;
+                //  reset timer
+                rx_timer.reset();
+
+                //  timestamp
+                last_sub_ctl_response = rx_timestamp.read_ms();
+            }
+        }
         
         //  feedback
         wheel[0]->get_state(
@@ -406,31 +455,31 @@ static void initialize_module()
 
     //  pid gain
     pid_param[0] = PID::ctrl_param_t {
-        0.1,
+        0.2,
         0.0,
         0.0,
-        0.0,
+        0.125,
         false
     };
     pid_param[1] = PID::ctrl_param_t {
-        0.1,
+        0.2,
         0.0,
         0.0,
-        0.0,
+        0.125,
         false
     };
     pid_param[2] = PID::ctrl_param_t {
-        0.1,
+        0.2,
         0.0,
         0.0,
-        0.0,
+        0.125,
         false
     };
     pid_param[3] = PID::ctrl_param_t {
-        0.1,
+        0.2,
         0.0,
         0.0,
-        0.0,
+        0.125,
         false
     };
 
