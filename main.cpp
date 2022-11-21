@@ -16,6 +16,7 @@
 #include <DebugMessage.h>
 #include <Gesture.h>
 #include <PIDGain.hpp>
+#include <Emotion.hpp>
 
 //  MD
 #include <MD.hpp>
@@ -83,7 +84,7 @@
 #define OMUNI_4_RADIUS 0.49419
 
 //  speed (m/s, rad/s)
-#define MAX_XY_SPEED 1.8
+#define MAX_XY_SPEED 2.5
 #define MAX_THETA_SPEED 1.57079632679
 #define MOVEMENT_FAST_XY 1.0
 #define MOVEMENT_FAST_THETA 0.7
@@ -115,6 +116,7 @@
 #define UPSTREAM_CONTROLLER_ID 7
 //  slave
 #define CONTROLLER_TX_ID 10
+#define EMOTION_ID 11
 //  from sub controlle
 #define SUB_CONTROLLER_ID 0
 
@@ -167,6 +169,7 @@ MovementFeedback movement_feedback_msg;
 DebugMessage debug_msg;
 Gesture gesture_msg;
 PIDGain pid_gain_msg;
+Emotion emotion_msg;
 
 /////////////////////////////
 //  Private protype function
@@ -182,6 +185,7 @@ int main()
 
     //  start timers
     rx_timer.start();
+    rx_timestamp.start();
 
     //  Serial Bridge
     //  to pc
@@ -193,6 +197,7 @@ int main()
     pc_serial.add_frame(UPSTREAM_CONTROLLER_ID, &upstream_controller_msg);
     //  to slave
     slave_serial.add_frame(CONTROLLER_TX_ID, &shooter_msg);
+    slave_serial.add_frame(EMOTION_ID, &emotion_msg);
     //  from sub controller
     sub_ctl_serial.add_frame(SUB_CONTROLLER_ID, &sub_controller_msg);
 
@@ -230,6 +235,8 @@ int main()
                     shooter_msg.data.shooter.power = controller_msg.data.shooter.power;
                     shooter_msg.data.shooter.action = controller_msg.data.shooter.action;
 
+                    emotion_msg.data.face = controller_msg.data.face;
+
 
                     //  set variable
                     received_movement_variable.x = controller_msg.data.movement.x;
@@ -238,6 +245,7 @@ int main()
                     movement_mode = controller_msg.data.movement_mode;
 
                     slave_serial.write(CONTROLLER_TX_ID);
+                    slave_serial.write(EMOTION_ID);
 
                     rx_timeout_led = false;
                     //  reset timer
@@ -293,8 +301,26 @@ int main()
                 received_movement_variable.z = sub_controller_msg.data.movement.z;
                 movement_mode = sub_controller_msg.data.movement_mode;
 
+                //  face
+                emotion_msg.data.face = controller_msg.data.face;
+
+                //  upstream
+                upstream_controller_msg.data.emergency_switch = sub_controller_msg.data.emergency_switch;
+                upstream_controller_msg.data.all_reload = sub_controller_msg.data.all_reload;
+                upstream_controller_msg.data.shooter.action = sub_controller_msg.data.shooter.action;
+                upstream_controller_msg.data.shooter.num = sub_controller_msg.data.shooter.num;
+                upstream_controller_msg.data.shooter.power = sub_controller_msg.data.shooter.power;
+                upstream_controller_msg.data.movement.x = sub_controller_msg.data.movement.x;
+                upstream_controller_msg.data.movement.y = sub_controller_msg.data.all_reload;
+                upstream_controller_msg.data.movement.z = sub_controller_msg.data.movement.z;
+                upstream_controller_msg.data.movement_mode = sub_controller_msg.data.movement_mode;
+                upstream_controller_msg.data.face = sub_controller_msg.data.face;
+
+                pc_serial.write(UPSTREAM_CONTROLLER_ID);
+
                 //  send slave
                 slave_serial.write(CONTROLLER_TX_ID);
+                slave_serial.write(EMOTION_ID);
 
                 //  Toggle LED
                 rx_sub_ctl_led = !rx_sub_ctl_led;
