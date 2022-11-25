@@ -259,7 +259,7 @@ int main()
             //  Gesture
             if(gesture_msg.was_updated())
             {
-                shooter_msg.data.shooter.action = gesture_msg.data.type == 1 ? true : false;
+                shooter_msg.data.shooter.action = gesture_msg.data.type == 1 ? 3 : 0;
 
                 //  send to slave
                 slave_serial.write(CONTROLLER_TX_ID);
